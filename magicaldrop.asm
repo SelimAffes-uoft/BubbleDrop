@@ -174,8 +174,12 @@ draw_chara:
 	lw $t2, ADDR_DSPL
 	add $t5, $t5, $t2  # Add display address
 	li $t6, 0xffffff # character color: white pixel
-	
 	sw $t6, 0($t5) # draw it
+	lw $t7, HELD   # Get the number of held bubbles
+	blt $t7, 1, func_return # If no bubbles are held, nothing else to draw ==> return func
+	lw $t7, HELD+4 # Otherwise take the color of the held bubbles
+	add $t5, $t5, 128 # Go to held-bubble-showing pixel
+	sw $t7, 0($t5) # draw it
 	jr $ra # return func
 	
 
@@ -187,8 +191,9 @@ undraw_chara:
 	lw $t2, ADDR_DSPL
 	add $t5, $t5, $t2  # Add display address
 	li $t6, 0x000000 # background color: black pixel
-	
-	sw $t6, 0($t5) # draw it
+	sw $t6, 0($t5) # undraw it
+	add $t5, $t5, 128 # Go to held-bubble-showing pixel
+	sw $t6, 0($t5) # undraw it
 	jr $ra # return func
 
 
