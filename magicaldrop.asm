@@ -344,7 +344,80 @@ throw_bubbles:
 	lw $t3, CHARA  # Load character position
 	lw $t4, HELD   # Load number of bubbles held
 	lw $t5, HELD+4 # Load color of bubbles held
-	# TODO
+	beq $t4, 0, func_return # If no bubbles are held, don't throw anything, don't check for matches
+	sw $zero, HELD
+	# Setup the loop by finding the column in $t6 and starting at the bottom
+	add $t6, $t3, 88 # Get the board index of the cell right above the character (91 for last row, -3 for character's visual offset)
+	mul $t6, $t6, 4  # Take into account integer memsize
+	add $t6, $t6, $t0 # Add board address to get full address
+	j find_floor_loop
+	
+
+find_floor_loop:
+	blt $t6, 0, place_bubbles # If you get to the top, place the bubbles
+	lw $t7, ($t6) # Get the color of the bubble in this slot
+	bne $t7, 0x000000, place_bubbles # If there is a bubble, place the bubbles under it
+	sub $t6, $t6, 28 # Else go to the next row (above, so 7*4 indices less)
+	j find_floor_loop # continue loop
+	
+	
+place_bubbles:
+	blt $t4, 1, check_match # If the player isn't holding any bubbles, go back to game loop
+	add $t6, $t6, 28 # We enter this function when on a bubble, so go under it
+	sw $t5, ($t6) # Add the bubble in that cell
+	sub $t4, $t4, 1 # Subtract one bubble from the held ones
+	j place_bubbles
+
+# check if there is a match after throwing. Starts off with $t6 the memory address of the bottom-most bubble & $t5 the color
+check_match:
+	li $t7, 1 # Initialize the bubble counter, counting the bottom-most thrown bubble
+	sub $t8, $t6, 28 # Go up one row. Use $t8 to preserve $t6 for later
+	j check_match_loop # Go in a loop  checking whether there is a match
+	
+check_match_loop:
+	blt $t8, $t0, func_return # If out of the board, there is no match. Return to game loop
+	bgt $t7, 2, execute_match # If there are at least three bubbles aligned vertically, execute the match
+	lw $t9, ($t8) # Get the color of currently checked cell
+	bne $t9, $t5, func_return # If the color is different and we're not yet at 3 stacked bubbles, there is no match
+	sub $t8, $t8, 28 # Otherwise, go to the bubble above to check it
+	add $t7, $t7, 1  # And increment the bubble counter for this match
+	j check_match_loop
+	
+# Draw the board and wait a bit to show the bubbles that will explode. This doesn't count for line advancement (don't penalize player for a line)
+impact_frames:
+	addi $sp, $sp, -4
+	sw $ra, 0($sp) # Push the $ra onto the stack
+	jal draw_board # Draw the board to show the recently thrown bubbles
+	lw $ra, 0($sp)
+	addi $sp, $sp, 4 # Pop the $ra from the stack
+	# Wait 5 frames
+	li $v0, 32
+	li $a0, 180
+	syscall
+	jr $ra
+
+# Having found a match whose bottom-most bubble is at $t6 with color $t5, remove all bubbles in the match (no flood fill or combos)
+execute_match:
+	addi $sp, $sp, -12
+	sw $ra, 0($sp)   # save return address
+	sw $t5, 4($sp)   # save match color
+	sw $t6, 8($sp)   # save bottom-most bubble address
+	jal impact_frames # Show impact frames, showing the bubbles before destroying them
+	lw $ra, 0($sp)   # Restore return address
+	lw $t5, 4($sp)   # restore match color
+	lw $t6, 8($sp)   # restore bubble address
+	addi $sp, $sp, 12
+	j execute_match_loop
+	
+execute_match_loop:
+	blt $t6, $t0, func_return # If out of the board, the match is finished. Return to game loop
+	lw $t8, ($t6) # Get the color of currently checked cell
+	bne $t8, $t5, func_return # If the color is different, the match is finished, return to game loop
+	li $t9, 0x000000 # $t9 is the empty color
+	sw $t9, ($t6)    # Empty the cell
+	sub $t6, $t6, 28  # Go to the cell above (up one row)
+	j execute_match_loop
+	
 
 #checks the keyboard input
 keyboard_input:
@@ -353,7 +426,9 @@ keyboard_input:
     	beq $a0, 0x61, move_left        # Check if the key a was pressed (move left)
     	beq $a0, 0x64, move_right       # Check if the key d was pressed (move right)
     	beq $a0, 0x73, grab_bubbles     # Check if the key s was pressed (grab)
-    	beq $a0, 0x77, throw_bubbles    # Check if the key w was pressed (throw) 
+    	beq $a0, 0x77, throw_bubbles    # Check if the key w was pressed (throw)
+    	j draw_screen
+    	
 
 game_loop:
 	la $t0, BOARD
@@ -365,13 +440,15 @@ game_loop:
     	beq $t8, 1, keyboard_input      # If first word 1, key is pressed (# 1b. Check which key has been pressed)
     
     # 2a. Check for collisions
+    	jal game_over_check # Every frame, check for game over
 	# 2b. Update locations (capsules)
 	# 3. Draw the screen
+draw_screen:
 	jal draw_board
 	
 	# 4. Sleep
 	addi $s0, $s0, 1              # count this frame
-	blt  $s0, 300, no_advance
+	blt  $s0, 75, no_advance
 	li   $s0, 0                   # reset counter
 	jal  add_row                  # push the lines down
 	
