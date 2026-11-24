@@ -73,8 +73,8 @@ main:
 	jal column  # draw right column
 	
 	la $t0, BOARD  # Load the board array
-	li $t5, 0   # set column index
-	# Draw 6 random rows
+	li $t5, 0   # set row index
+	# Draw 4 random rows
 	jal random_rows
 	jal draw_chara
 	
@@ -87,23 +87,23 @@ func_return:
 	jr $ra           # Returns a function
 	
 
-# Fill 6 rows with random bubbles	
+# Fill 4 rows with random bubbles	
 random_rows:
 	la $t0, BOARD # Load BOARD address just in case
 	bgt $t5, 3, func_return # Return if all rows are done
 	# otherwise store $ra in the stack & call random_row
 	addi $sp, $sp, -4
 	sw $ra, 0($sp) # Push the $ra onto the stack
-	li $t4, 0   # set row index for random_row
+	li $t4, 0   # set column index for random_row
 	jal random_row
 	lw $ra, 0($sp)
 	addi $sp, $sp, 4 # Pop the $ra from the stack
-	add $t5, $t5, 1  # increment column index
+	add $t5, $t5, 1  # increment row index
 	j random_rows
 	
 # Fill a row with random bubbles
 random_row:
-	bgt $t4, 6, func_return   # Return if row is done (at index > 10)
+	bgt $t4, 6, func_return   # Return if row is done (column index > 6)
 	li $v0, 42  # Load random generation function
 	li $a1, 4   # Load arg for random generation (4 colors)
 	la $t7, COLORS # load colors to $t7
@@ -113,20 +113,20 @@ random_row:
 	add $t8, $t8, $t7 # get color address in $t8
 	lw $t8, 0($t8)    # Load color from memory
 	
-	mul $t6, $t5, 28  # Row memory indexing in BOARD (index*7*4)
+	mul $t6, $t5, 28  # row memory indexing in BOARD (row*7*4)
 	mul $t9, $t4, 4   # column memory indexing in BOARD
 	add $t6, $t6, $t9 # Add column indexing in BOARD
 	add $t6, $t6, $t0 # Add BOARD address to get final address
 	sw $t8, 0($t6)    # Write the cell's color in the board array
 	
-	add $t4, $t4, 1   # Increment the row index
+	add $t4, $t4, 1   # Increment the column index
 	j random_row
 	
 row:
 	bgt $t4, 10, func_return   # Return if row is done (at index > 10)
 	# Compute the pixel to color in $t6
-	mul $t6, $t5, 128   # column coord in $t6
-	mul $t7, $t4, 4     # row coord in $t7
+	mul $t6, $t5, 128   # row coord in $t6
+	mul $t7, $t4, 4     # column coord in $t7
 	add $t6, $t6, $t7   # add current row coord
 	add $t6, $t6, $t2   # add display address
 	sw $t0, 0($t6)    # Color in the pixel
@@ -137,8 +137,8 @@ row:
 column:
 	bgt $t5, 20, func_return   # Return if column is done (at index > 20)	
 	# Compute the pixel to color in $t6
-	mul $t6, $t5, 128  # column coord in $t6
-	mul $t7, $t4, 4    # row coord in $t5
+	mul $t6, $t5, 128  # row coord in $t6
+	mul $t7, $t4, 4    # column coord in $t7
 	add $t6, $t6, $t7   # add current row coord
 	add $t6, $t6, $t2   # add display address
 	
@@ -150,21 +150,21 @@ column:
 
 move_right:
 	lw $t5, CHARA # Load character position
-	bgt $t5, 8, game_loop # if character all the way right, don't go right
+	bgt $t5, 8, draw_screen # if character all the way right, don't go right
 	jal undraw_chara # Remove character from old position
 	lw $t5, CHARA # Load character position again ($t5 used by undraw)
 	add $t5, $t5, 1 # Move character 1 unit to the right
 	sw $t5, CHARA # Store new character position
-	j game_loop # Restart game loop
+	j draw_screen # Go back to start game loop
 
 move_left:
 	lw $t5, CHARA
-	blt $t5, 4, game_loop # if character all the way left, don't go left
+	blt $t5, 4, draw_screen # if character all the way left, don't go left
 	jal undraw_chara # Remove character from old position
 	lw $t5, CHARA # Load character position again ($t5 used by undraw)
 	sub $t5, $t5, 1 # Move character 1 unit to the left
 	sw $t5, CHARA # Store new character position
-	j game_loop # Restart game loop
+	j draw_screen # Go back to game loop
 
 # Draw the character
 draw_chara:
@@ -208,7 +208,7 @@ grab_bubbles:
 
 
 grab_bubbles_loop:
-	blt $t5, 0, game_loop # If at the top, stop the loop
+	blt $t5, 0, draw_screen # If at the top, stop the loop
 	mul $t6, $t5, 7 # Start finding index by multiplying rows
 	add $t6, $t6, $t4 # Find index of this "bubble" (or empty spot)
 	mul $t6, $t6, 4   # Find the offset by multiplying by 4 (memory of an integer)
@@ -219,21 +219,21 @@ grab_bubbles_loop:
 
 
 grab_bubbles_loop_incr:
-	move $a0, $t4 # The row of the color as argument
-	move $a1, $t5 # The column of the color as argument
+	move $a0, $t4 # The column of the color as argument
+	move $a1, $t5 # The row of the color as argument
 	sub $t5, $t5, 1 # decrement the row index
 	j grab_bubbles_loop # go back to start of loop
 
 
 grab_bubble_diff_col:
-	la $t9, HELD # Load into $t6 the address of the number of held bubbles
+	la $t9, HELD # Load into $t9 the address of the number of held bubbles
 	lw $t9, 0($t9)   # Get the actual number of held bubbles
-	bne $t9, 0, game_loop # If the colors are different, and a bubble is already held, end the loop
+	bne $t9, 0, draw_screen # If the colors are different, and a bubble is already held, end the loop
 	li $t9, 1 # Else hold this one bubble
 	sw $t9, HELD # And store the number of held bubbles
 	sw $t6, HELD+4 # And store the new color of held bubbles
-	move $a0, $t4 # The row of the color as argument
-	move $a1, $t5 # The column of the color as argument
+	move $a0, $t4 # The column of the color as argument
+	move $a1, $t5 # The row of the color as argument
 	
 	j undraw_bubble # Undraw the bubble on the board
 
@@ -323,7 +323,7 @@ add_row:
 	li $t4, 90 # The last cell of the second to last row
 	j shift_loop
 	
-# This loop starts from bottom to top and shifts each cell 1 pixel down
+# This loop starts from bottom to top and shifts each cell 1 row down
 shift_loop:
 	blt $t4, 0, new_row # If we checked all the cells (bottom to top/last to first), add top row, 
 	mul $t5, $t4, 4     # Get the memloc of the cell
@@ -339,7 +339,7 @@ new_row:
 	li $t4, 0
 	addi $sp, $sp, -4
 	sw $ra, 0($sp) # Push the $ra onto the stack
-	jal random_row # Check for game over by looking at last row
+	jal random_row # Fill up top row
 	lw $ra, 0($sp)
 	addi $sp, $sp, 4 # Pop the $ra from the stack
 	jr $ra
@@ -359,7 +359,7 @@ throw_bubbles:
 	
 
 find_floor_loop:
-	blt $t6, 0, place_bubbles # If you get to the top, place the bubbles
+	blt $t6, $t0, place_bubbles # If you get to the top, place the bubbles
 	lw $t7, ($t6) # Get the color of the bubble in this slot
 	bne $t7, 0x000000, place_bubbles # If there is a bubble, place the bubbles under it
 	sub $t6, $t6, 28 # Else go to the next row (above, so 7*4 indices less)
@@ -369,6 +369,8 @@ find_floor_loop:
 place_bubbles:
 	blt $t4, 1, check_match # If the player isn't holding any bubbles, go back to game loop
 	add $t6, $t6, 28 # We enter this function when on a bubble, so go under it
+	addi $t9, $t0, 392        # end of BOARD (98 cells * 4 bytes)
+	bge $t6, $t9, game_over   # stack pushed past the bottom row
 	sw $t5, ($t6) # Add the bubble in that cell
 	sub $t4, $t4, 1 # Subtract one bubble from the held ones
 	j place_bubbles
@@ -380,8 +382,8 @@ check_match:
 	j check_match_loop # Go in a loop  checking whether there is a match
 	
 check_match_loop:
-	blt $t8, $t0, func_return # If out of the board, there is no match. Return to game loop
 	bgt $t7, 2, execute_match # If there are at least three bubbles aligned vertically, execute the match
+	blt $t8, $t0, func_return # If out of the board, there is no match. Return to game loop	
 	lw $t9, ($t8) # Get the color of currently checked cell
 	bne $t9, $t5, func_return # If the color is different and we're not yet at 3 stacked bubbles, there is no match
 	sub $t8, $t8, 28 # Otherwise, go to the bubble above to check it
@@ -395,7 +397,7 @@ impact_frames:
 	jal draw_board # Draw the board to show the recently thrown bubbles
 	lw $ra, 0($sp)
 	addi $sp, $sp, 4 # Pop the $ra from the stack
-	# Wait 5 frames
+	# Wait 11 frames
 	li $v0, 32
 	li $a0, 180
 	syscall
@@ -424,6 +426,10 @@ execute_match_loop:
 	j execute_match_loop
 	
 
+keyboard_throw:
+	jal throw_bubbles
+	j draw_screen
+
 #checks the keyboard input
 keyboard_input:
 	lw $a0, 4($t1)                  # Load second word from keyboard
@@ -431,7 +437,7 @@ keyboard_input:
     	beq $a0, 0x61, move_left        # Check if the key a was pressed (move left)
     	beq $a0, 0x64, move_right       # Check if the key d was pressed (move right)
     	beq $a0, 0x73, grab_bubbles     # Check if the key s was pressed (grab)
-    	beq $a0, 0x77, throw_bubbles    # Check if the key w was pressed (throw)
+    	beq $a0, 0x77, keyboard_throw    # Check if the key w was pressed (throw)
     	j draw_screen
     	
 
@@ -453,7 +459,7 @@ draw_screen:
 	
 	# 4. Sleep
 	addi $s0, $s0, 1              # count this frame
-	blt  $s0, 75, no_advance
+	blt  $s0, 100, no_advance
 	li   $s0, 0                   # reset counter
 	jal  add_row                  # push the lines down
 	
